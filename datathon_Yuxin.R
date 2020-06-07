@@ -5,10 +5,9 @@ data <- read.csv(file = "~/Desktop/Rotman MMA Summer Datathon (men&women olympic
 ## convert data set to a data frame
 df.data <- as.data.frame(data)
 ## extract women's data
-df.women <- df.data[1:3046,]
 library(dplyr)
 library(ggplot2)
-df.women <- filter(df.women, team_name == "Olympic (Women) - Canada")
+df.women <- filter(df.data, team_name == "Olympic (Women) - Canada")
 
 
 ## check situation types
@@ -20,16 +19,19 @@ print(plot1 + geom_boxplot(aes(fill = factor(situation_type))) +
 
 
 
-## convert 6 on 5 and 5 on 3 to 5 on 4 situation, since they 
+
+## convert 4 on 3, 6 on 5, 5 on 3, 6 on 4, 6 on 5 to 5 on 4 situation, since they 
 ## all belong to power play cases
+
+
+
 for(i in 1:nrow(df.women)){  
   if (df.women$situation_type[i] == "6 on 5"){
     df.women$situation_type[i] = "5 on 4"
   }
 }
 
-d <- filter(df.women, situation_type == "6 on 5")
-d
+filter(df.women, situation_type == "6 on 5")
 
 
 for(i in 1:nrow(df.women)){  
@@ -41,8 +43,30 @@ for(i in 1:nrow(df.women)){
 filter(df.women, situation_type == "5 on 3")
 
 
+for(i in 1:nrow(df.women)){  
+  if (df.women$situation_type[i] == "4 on 3"){
+    df.women$situation_type[i] = "5 on 4"
+  }
+}
+
+filter(df.women, situation_type == "4 on 3")
+
+for(i in 1:nrow(df.women)){  
+  if (df.women$situation_type[i] == "6 on 4"){
+    df.women$situation_type[i] = "5 on 4"
+  }
+}
+
+filter(df.women, situation_type == "6 on 4")
+
+for(i in 1:nrow(df.women)){  
+  if (df.women$situation_type[i] == "6 on 5"){
+    df.women$situation_type[i] = "5 on 4"
+  }
+}
 
 
+filter(df.women, situation_type == "6 on 5")
 
 ##############################################################################################
 #
@@ -309,8 +333,7 @@ print(p1 + geom_point(aes(shape = factor(event_successful), color = factor(event
 #
 ###########################################################################################
 df.data <- as.data.frame(data)
-df.women <- df.data[1:3046,]
-df.women <- filter(df.women, team_name == "Olympic (Women) - Canada")
+df.women <- filter(df.data, team_name == "Olympic (Women) - Canada")
 
 ## logistic model for pass 
 df.pass1 <- filter(df.women, event_type == "Play")
@@ -326,7 +349,7 @@ df.pass1$pass_angle <- acos((df.pass1$receiver_x - df.pass1$x_event)/
 
 ## create logistic model 
 pass.model.1 <- glm(pass_success ~ x_event + y_event + pass_distance + pass_angle + 
-                      receiver_x + receiver_y + situation_type, data = df.pass1, family = "binomial")
+                      receiver_x + receiver_y, data = df.pass1, family = "binomial")
 summary(pass.model.1)
 
 
@@ -340,7 +363,7 @@ pass.test.1 = filter(subset(df.pass1, pass.split.1 == FALSE), pass_distance > 0)
 
 
 final.pass.1 <- glm(pass_success ~ x_event + y_event + pass_distance + pass_angle + 
-                      receiver_x + receiver_y + situation_type, data = pass.train.1, family = "binomial")
+                      receiver_x + receiver_y, data = pass.train.1, family = "binomial")
 summary(final.pass.1)
 
 
@@ -349,7 +372,7 @@ summary(final.pass.1)
 pass.prob.1 <- predict(final.pass.1, newdata = pass.test.1, type = 'response')
 pass.results.1 <- ifelse(pass.prob.1 > 0.5,1,0)
 pass.error.1 <- mean(pass.results.1 != pass.test.1$pass_success)
-print(paste('Accuracy',1-pass.error.1))   ## 0.696
+print(paste('Accuracy',1-pass.error.1))   ## 0.738
 
 
 
@@ -440,8 +463,8 @@ df.shot1$shot_angle <- acos((goal.net[1] - df.shot1$x_event)/
 
 
 ## create logistic model 
-shot.model.1 <- glm(goal ~ x_event + y_event + shot_distance + shot_angle + shot_type + period
-                    + situation_type,data = df.shot1, family = "binomial")
+shot.model.1 <- glm(goal ~ x_event + y_event + shot_distance + shot_angle + shot_type, 
+                    data = df.shot1, family = "binomial")
 summary(shot.model.1)
 
 
@@ -453,8 +476,8 @@ shot.train.1 = subset(df.shot1, shot.split.1 == TRUE)
 shot.test.1 = subset(df.shot1, shot.split.1 == FALSE)
 
 
-final.shot.1 <- glm(goal ~ x_event + y_event + shot_distance + shot_angle + shot_type + period
-                    + situation_type, data = shot.train.1, family = "binomial")
+final.shot.1 <- glm(goal ~ x_event + y_event + shot_distance + shot_angle + shot_type + period,
+                    data = shot.train.1, family = "binomial")
 summary(final.shot.1)
 
 
@@ -463,7 +486,7 @@ summary(final.shot.1)
 shot.prob.1 <- predict(final.shot.1, newdata = shot.test.1, type = 'response')
 shot.results.1 <- ifelse(shot.prob.1 > 0.5,1,0)
 shot.error.1 <- mean(shot.results.1 != shot.test.1$goal)
-print(paste('Accuracy',1-shot.error.1))   ## 0.9646
+print(paste('Accuracy',1-shot.error.1))   ## 0.9628
 
 
 
