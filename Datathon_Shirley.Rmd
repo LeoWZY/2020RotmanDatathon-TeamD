@@ -191,6 +191,8 @@ data %>% group_by(event_type) %>% summarise(n=n())
 
 #shot
 ```{r}
+library(caTools)
+library(rpart.plot)
 #shot data
 
 shot <- filter(data, event_type=="Shot")
@@ -221,55 +223,77 @@ for (i in 1:nrow(shot)){
 #note: r always works wirh radians, not angel; radian=angel*pi/180
 #example:tan(45*pi/180); atan(tan(45*pi/180)) /pi*180
 for (i in 1:nrow(shot)){
-  shot$shot_angel[i] <- atan((abs(net[2]-shot[i,"y"]))/abs(net[1]-shot[i,"x"]))#/pi*180
+  shot$shot_angel[i] <- atan((abs(net[2]-shot[i,"y"]))/abs(net[1]-shot[i,"x"]))/pi*180
 }
 
 
 shot$goal = factor(shot$goal)
 shot$period = factor(shot$period)
 
-shot
+set.seed(100)
+split.1 <- sample.split(shot$goal, 0.7)
+shot_train <- subset(shot, split.1==TRUE)
+shot_test <- subset(shot, split.1==FALSE)
 
 
 #Logistic model
-model1 <- glm(goal ~ shot_dist + shot_angel +period , data=shot, family = binomial(link="logit"))
+model1 <- glm(goal ~ shot_dist + shot_angel + shot_type , data=shot_train, family = binomial(link="logit"))
 summary(model1)
 prob <- predict(model1, type="response")
-
-
-for (i in 1:nrow(shot)){
-  if (prob[i]>0.5){shot[i,"pred_log"]=1}
-  else {shot[i,"pred_log"]=0}
-}
-
+results.1 <- ifelse(prob>0.5,1,0)
 #accuracy rate:
-sum(shot$pred_log==shot$goal)/nrow(shot)  #0.964
-
+1-(mean(results.1!=shot_test$goal))  #0.9648774
 
 
 #decision tree model
 library(rpart)
-tree <- rpart(goal ~ shot_dist + shot_angel + x +y+shot_type+period+team_name+situation_type, data=shot, control=rpart.control(cp=.005))
+tree <- rpart(goal ~ shot_dist + shot_angel , data=shot, control=rpart.control(cp=.005))
 plot(tree, uniform=TRUE, margin=.05)
 text(tree)
+rpart.plot(tree)
 
-pred_tree <- predict(tree)
-for (i in 1:nrow(shot)){
-  if(pred_tree[i,1]>=0.5){shot[i,"pred_tree"] = 0}
-  else{shot[i,"pred_tree"] = 1}
-}
-sum(shot$pred_tree==shot$goal)/nrow(shot)  #0.969
+pred_tree <- predict(tree, newdata = shot_test)
+results.2 <- ifelse(pred_tree[,"0"]>0.5,0,1)
+#accuracy rate:
+1-(mean(results.2!=shot_test$goal)) #0.9659443
+
 tree
-
-shot
 
 
 ```
+- Based on the models, shot distance and shot angel are significant in determining whether the shot is successful.
+- Our next step is to use Canadian Woman data to predict the prob of successful shot based on each player's average distance and angel data.
+
+```{r}
+#Use logistic model to select top 5 shooters
+#Method: average all probablities of succussful shot for each player
+cw_df <- filter(shot, team_name=="Olympic (Women) - Canada")
+md <- glm(goal ~ shot_dist + shot_angel , data=shot_train, family = binomial(link="logit"))
+cw_df$prob_goal <- predict(md, newdata = cw_df, type="response")
+shooters <- cw_df %>% group_by(shooter) %>% summarise(prob=mean(prob_goal)) %>% arrange(desc(prob))
+shooters
+
+
+top_shot_names <- c("Haley Irwin","Melodie Daoust","Lauriane Rougeau","Natalie Spooner","Ann-Sophie Bettez")
+top_shooters <- filter(cw_df, shooter %in% top_shot_names)[,c("shooter","prob_goal")] %>% arrange(shooter)
+library(ggplot2)
+p2 <- ggplot(top_shooters, aes(x=shooter, y=prob_goal, fill=shooter))   +geom_boxplot(varwidth = TRUE, alpha=0.2) +
+    theme(legend.position="none") 
+
+p2 + labs(x="shooters", y = "predicted successful rate")
+```
+- Top 5 shooters:
+Haley Irwin	0.109572307			
+Melodie Daoust	0.085702620			
+Lauriane Rougeau	0.065863791			
+Natalie Spooner	0.064987426			
+Ann-Sophie Bettez	0.055127040	
+
 
 
 #play
 ```{r}
-library(caTools)
+
 #play data (reflect the quality of passes)
 pass <- data %>% filter(event_type=='Play')
 pass <- pass[,c("game_name","period","team_name","player_name","receiver_name","situation_type","x_event","y_event","receiver_x","receiver_y","event_successful")]
@@ -297,26 +321,26 @@ for (i in 1:nrow(pass)){
 for (i in 1:nrow(pass)){
   pass$angel[i] <- atan((abs(pass[i,"receiver_y"]-pass[i,"y"]))/abs(pass[i,"receiver_x"]-pass[i,"x"]))/pi*180
 }
-s
+
 pass$goal = factor(pass$goal)
 pass$period = factor(pass$period)
 
 pass <- na.omit(pass)
 
-setseed(100)
+set.seed(100)
 split.1 <- sample.split(shot$goal, 0.7)
 pass_train <- subset(pass, split.1==TRUE)
 pass_test <- subset(pass, split.1==FALSE)
 
 #1.logistic model
 
-model2 <- glm(goal ~ distance + angel+x +y+receiver_x+receiver_y +team_name+situation_type , data=pass_train, family = binomial(link="logit"))
+model2 <- glm(goal ~ distance + angel+x +y+receiver_x+receiver_y  , data=pass_train, family = binomial(link="logit"))
 summary(model2)
 prob2 <- predict(model2, newdata = pass_test, type="response")
 
-results.1 <- ifelse(prob2>0.5,1,0)
+results.3 <- ifelse(prob2>0.5,1,0)
 #accuracy rate:
-1-(mean(results.1!=pass_test$goal))  #0.7347794
+1-(mean(results.3!=pass_test$goal))  #0.7340191
 
 
 #2.decision tree model
@@ -329,20 +353,61 @@ text(tree2)
 rpart.plot(tree2)
 
 pred_tree2 <- predict(tree2, newdata = pass_test)
-results.2 <- ifelse(pred_tree2[,"0"]>0.5,0,1)
+results.4 <- ifelse(pred_tree2[,"0"]>0.5,0,1)
 #accuracy rate:
-1-(mean(results.2!=pass_test$goal))  #0.750801
+1-(mean(results.4!=pass_test$goal))  #0.7526329
 
 tree2
 
-
-ggplot(data=pass,aes(distance, pred))+geom_smooth()
-ggplot(data=pass,aes(angel, pred))+geom_smooth()
-ggplot(data=pass,aes(abs(x-receiver_x), pred))+geom_smooth()
-ggplot(data=pass,aes(abs(y-receiver_y), pred))+geom_smooth()
-
 ```
 
-- Overall, decision tree performs better than logistic model due to the higher accuracy rate.
+- Based on the logistic, significant variables that determines whether the pass is successful are: distance,angel,x,receiver_x.
+- Our next step is to use Canadian Woman data to predict the prob of successful pass based on each player's significant variables.
 
 
+```{r}
+#Use logistic model to select top 5 possers
+#Method: average all probablities of succussful pass for each player
+cw_df2 <- filter(pass, team_name=="Olympic (Women) - Canada")
+model2 <- glm(goal ~ distance + angel+x +y+receiver_x+receiver_y  , data=pass_train, family = binomial(link="logit"))
+cw_df2$prob_goal <- predict(model2, newdata = cw_df2, type="response")
+passers <- cw_df2 %>% group_by(player_name) %>% summarise(prob=mean(prob_goal)) %>% arrange(desc(prob))
+passers
+
+top_pass_names <- c("Shannon Szabados","Haley Irwin","Genevieve Lacasse","Ann-Renee Desbiens","Loren Gabel")
+top_passers <- filter(cw_df2, player_name %in% top_pass_names)[,c("player_name","prob_goal")] %>% arrange(player_name)
+library(ggplot2)
+p1 <- ggplot(top_passers, aes(x=player_name, y=prob_goal, fill=player_name))   +geom_boxplot(varwidth = TRUE, alpha=0.2) +
+    theme(legend.position="none")
+p+labs(x="passers", y = "predicted successful rate")
+
+
+```
+- Top 5 passers: 
+
+Shannon Szabados	0.7892871			
+Haley Irwin	0.7862256			
+Genevieve Lacasse	0.7837537			
+Ann-Renee Desbiens	0.7803795			
+Loren Gabel  0.7549695	
+
+- We oberserved that Haley Irwin is dominant in both passers and shooters. So we want to analyze more specifically on Haley.
+
+
+```{r}
+Haley <- filter(canada_woman, player_name == "Haley Irwin")
+Haley %>% group_by(event_type, event_successful) %>% summarise(n=n())
+```
+
+```{r}
+canada_woman
+```
+
+
+
+#power play a>b
+```{r}
+canada_woman %>% group_by(situation_type) %>% summarise(n=n())
+```
+
+#penalty kill a<b
