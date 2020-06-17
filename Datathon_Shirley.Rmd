@@ -1,0 +1,600 @@
+---
+title: "Datathon_Shirley"
+author: "Shirley Gui"
+date: "5/21/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#1.exploratory analysis
+```{r}
+#install.packages("dplyr")
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(pROC)
+
+data <- read.csv(file = "~/Desktop/RotmanDatathon/Rotman MMA Summer Datathon (men&women olympic).csv", header = T)
+
+##filter out Canadian team
+canada <- data[str_detect(data$team_name,'Canada'),]
+canada_woman <- canada[str_detect(canada$team_name,'Women'),]
+canada_man <- canada[str_detect(canada$team_name,'Men'),]
+
+canada_woman %>% group_by(event_successful) %>% summarise(n_woman=n()) %>% mutate(rate=n_woman/sum(n_woman))
+canada_man %>% group_by(event_successful) %>% summarise(n_man=n()) %>% mutate(rate=n_man/sum(n_man))
+
+canada_woman %>% group_by(period,event_successful) %>% summarise(n_woman=n()) %>% mutate(rate=n_woman/sum(n_woman))
+canada_man %>% group_by(period,event_successful) %>% summarise(n_man=n()) %>% mutate(rate=n_man/sum(n_man))
+
+
+##for event "play"
+summary(canada_woman$event_type)
+canada_woman %>% group_by(event_type,event_successful) %>% summarise(n_woman=n()) %>% mutate(rate=n_woman/sum(n_woman))
+canada_man %>% group_by(event_type,event_successful) %>% summarise(n_man=n()) %>% mutate(rate=n_man/sum(n_man))
+
+
+canada_shot <- filter(canada, event_type=='Shot')
+canada_shot %>% group_by(shot_type) %>% summarise(n=n())  %>% arrange(desc(n))
+canada_shot %>% group_by(shot_type,event_successful) %>% summarise(n=n()) %>% mutate(rate=n/sum(n)) %>% arrange(desc(rate))
+
+##shot successful rate for each canadian player
+canada_shot %>% group_by(player_name,event_successful)  %>% summarise(n=n()) %>% mutate(rate=n/sum(n)) %>% arrange(desc(rate)) %>% filter(event_successful=="t")
+
+
+```
+1. The successful rate of woman is 0.68, and man is 0.71. Overall men perform slightly better than women.
+2. The successful rate for both man and woman is the best at period 4.
+3. The "shot" event is especially low at 0.039(woman) and 0.053(man).
+
+
+```{r}
+##compare the performance of Canadian team with all other teams
+
+#(Women) - Olympic Athletes from Russia
+woman_russia <- data[str_detect(data$team_name,'Russia'),]
+#(Women) - United States
+woman_US <- data[str_detect(data$team_name,'United States'),]
+#(Women) - Finland
+woman_finland <- data[data$team_name=="Olympic (Women) - Finland",]
+#(Men) - Switzerland
+man_swzl <- data[str_detect(data$team_name,'Switzerland'),]
+#(Men) - Czech Republic
+man_CR <- data[str_detect(data$team_name,'Czech Republic'),]
+#(Men) - South Korea
+man_korea <- data[str_detect(data$team_name,'South Korea'),]
+#(Men) - Finland
+man_finland <- data[str_detect(data$team_name,'(Men) - Finland'),]
+#(Men) - Germany
+man_germany <- data[str_detect(data$team_name,'(Men) - Germany'),]
+
+
+rank_success <- data %>% group_by(team_name,event_successful) %>% summarise(n=n()) %>% mutate(rate=n/sum(n)) %>% arrange(desc(rate))
+rank_success <- rank_success %>% filter(event_successful=='t')
+rank_success$rate = round(rank_success$rate,digits = 3)
+rank_success
+
+woman_rank <- rank_success[str_detect(rank_success$team_name,'Women'),]
+man_rank <- rank_success[str_detect(rank_success$team_name,'Men'),]
+
+
+##plot of men teams
+area.color=c("coral2","skyblue3", "skyblue3", "skyblue3", "skyblue3","skyblue3")
+
+p1 <- ggplot(data=man_rank, aes(x=rate, y=team_name)) +
+  coord_cartesian(xlim = c(0.6, 0.75))+
+  geom_bar(stat="identity", width=0.5, fill = area.color)+
+  geom_text(aes(label = rate, y = team_name), size = 3.5, col="gray30",hjust=-0.2)+
+  theme_minimal()
+
+p1+labs(title = "Event Success Rate of Men Teams",
+              x = "Event Success Rate", y = "Team Names")
+
+##plot of woman teams
+area.color2=c("skyblue3","skyblue3", "coral2", "skyblue3")
+
+p2 <- ggplot(data=woman_rank, aes(x=rate, y=team_name)) +
+  coord_cartesian(xlim = c(0.53, 0.72))+
+  geom_bar(stat="identity", width=0.5, fill = area.color2)+
+  geom_text(aes(label = rate, y = team_name), size = 4, col="gray30",hjust=-0.2)+
+  theme_minimal()
+
+p2+labs(title = "Event Success Rate of Women Teams",
+              x = "Event Success Rate", y = "Team Names")
+
+
+
+
+```
+- Overall the Canadian Men Team is of best performance among all other men teams. However, the advantage of Canadian Women Team is less dominant, as it ranks the third out of four teams. The Russian Women Team is apparently left behind among all other teams with a successful rate of 0.58
+
+
+
+
+```{r}
+#total scores
+scores <- data %>% filter(event_type=="Shot",event_successful=="t") %>% group_by(game_name,team_name) %>% count() %>% arrange(desc(game_name))
+
+#unique(data[,"game_name"]) # 17 different games with only 28 observations
+
+index <- scores$game_name %in% c("2019-02-17 - Olympic (Women) - Canada at Olympic (Women) - United States","2019-02-12 - Olympic (Women) - United States at Olympic (Women) - Canada","2018-02-21 - FInland at Canada	Olympic (Men) - Canada","2018-02-19 - Canada - Women at Olympic Athletes from Russia - Women","2018-02-18 - South Korea at Canada","2018-02-11 - Olympic Athletes from Russia - Women at Canada - Women","2018-02-21 - FInland at Canada")
+competing_teams <- scores[!index,]
+
+competing_teams_woman <- competing_teams[str_detect(competing_teams$team_name,'Women'),]
+competing_teams_man <- competing_teams[str_detect(competing_teams$team_name,'Men'),]
+
+
+#plot of woman teams
+axis_label1 <- c("18/02/13","18/02/14","18/02/21","19/02/14","19/04/06","19/04/13","19/04/14")
+p3 <- ggplot(data=competing_teams_woman, aes(x=game_name, y=n, fill = team_name)) +
+  coord_cartesian(ylim = c(0,4))+
+  geom_bar(stat="identity", width=0.5,position=position_dodge())+
+  scale_fill_manual(values=c('coral2','skyblue',"darkseagreen"))+
+  theme_minimal()
+
+p3+labs(title = "Comparison of Scores for Woman Games",
+              x = "Different Games", y = "Scores")+
+  scale_x_discrete(labels=axis_label1)+
+  theme(
+     axis.text.x=element_text(),
+    axis.ticks.x=element_blank())
+
+#plot of man teams
+axis_label2 <- c("2018-02-15","2018-02-16","2018-02-23","2018-02-24")
+p4 <- ggplot(data=competing_teams_man, aes(x=game_name, y=n, fill = team_name)) +
+  coord_cartesian(ylim = c(0,7))+
+  geom_bar(stat="identity", width=0.5,position=position_dodge())+
+  scale_fill_manual(values=c('coral2','skyblue',"darkseagreen","rosybrown1"))+
+  theme_minimal()
+
+p4+labs(title = "Comparison of Scores for Man Games",
+              x = "Different Games", y = "Scores")+
+  scale_x_discrete(labels=axis_label2)+
+  theme(
+    axis.text.x=element_text(),
+    axis.ticks.x=element_blank())
+
+
+```
+- Lack data:
+  "2019-02-17 - Olympic (Women) - Canada at Olympic (Women) - United States":	Olympic (Women) - United States
+  "2019-02-12 - Olympic (Women) - United States at Olympic (Women) - Canada":	Olympic (Women) - Canada
+  "2018-02-21 - FInland at Canada	Olympic (Men) - Canada": Olympic (Men) - Finland
+  "2018-02-19 - Canada - Women at Olympic Athletes from Russia - Women":	Olympic (Women) - Russia
+  "2018-02-18 - South Korea at Canada":	Olympic (Men) - South Korea
+  "2018-02-11 - Olympic Athletes from Russia - Women at Canada - Women":	Olympic (Women) - Russia
+  
+- Insights:
+1. From 18/02/14 to 19/04/06, the overall performance of U.S Women team has gradually increased.
+2. There was a significant improvement for Finland Women team for 18/02/13 and 19/04/13.
+
+
+
+
+
+#2.weights of importance for events
+##Comparison of woman Finland & women Canada team
+```{r}
+##Game for 18/02/13
+df1 <- woman_finland[woman_finland$game_date=="2/13/2018",] %>% group_by(event_type,event_successful) %>% summarise(n=n()) 
+df2 <- canada_woman[canada_woman$game_date=="2/13/2018",] %>% group_by(event_type,event_successful) %>% summarise(n=n())
+
+##Game for 19/04/14
+df3 <- woman_finland[woman_finland$game_date=="4/13/2019",] %>% group_by(event_type,event_successful) %>% summarise(n=n())
+df4 <-canada_woman[canada_woman$game_date=="4/13/2019",] %>% group_by(event_type,event_successful) %>% summarise(n=n())
+
+df1 %>% filter(event_type=="Play") %>% mutate(percentage=n/sum(n)) #70.25%
+df2 %>% filter(event_type=="Play") %>% mutate(percentage=n/sum(n)) #68.43%
+df3 %>% filter(event_type=="Play") %>% mutate(percentage=n/sum(n)) #72.80%
+df4 %>% filter(event_type=="Play") %>% mutate(percentage=n/sum(n)) #80.64%
+
+df1 %>% filter(event_type=="Shot") %>% mutate(percentage=n/sum(n)) #2.17%
+df2 %>% filter(event_type=="Shot") %>% mutate(percentage=n/sum(n)) #6.67%
+df3 %>% filter(event_type=="Shot") %>% mutate(percentage=n/sum(n)) #9.09%
+df4 %>% filter(event_type=="Shot") %>% mutate(percentage=n/sum(n)) #2%
+
+df1 %>% filter(event_type=="Takeaway") 
+df2 %>% filter(event_type=="Takeaway") 
+df3 %>% filter(event_type=="Takeaway") 
+df4 %>% filter(event_type=="Takeaway") 
+
+df1 %>% filter(event_type=="Faceoff")
+df2 %>% filter(event_type=="Faceoff")
+df3 %>% filter(event_type=="Faceoff") 
+df4 %>% filter(event_type=="Faceoff")
+
+```
+
+##Comparison of woman US & women Canada team
+
+```{r}
+#based on the results:
+#weights	pass 3.23%	shot77.08%	takeaway 13.98%	faceoff 5.70%
+```
+
+##weights
+```{r}
+weigh_pass <- (0.0323+0.031)/2
+weigh_shot <- (0.8483+0.7708)/2
+weigh_takeaway <- (0.1398+0.077)/2
+weigh_faceoff <- (0.0437+0.057)/2
+weigh_pass
+weigh_shot
+weigh_takeaway
+weigh_faceoff
+```
+
+
+#3.Models
+##'Shot' Model
+```{r}
+library(rpart)
+library(caTools)
+library(rpart.plot)
+#shot data
+
+shot <- filter(data, event_type=="Shot")
+shot <- shot[,c("game_name","period","team_name","player_name","shot_type","situation_type","x_event","y_event","event_successful")]
+shot <- shot %>% rename(x=x_event,y=y_event, goal=event_successful,shooter=player_name)
+shot['goal'] <- data.frame(lapply(shot['goal'], as.character), stringsAsFactors=FALSE)
+
+#convert "f/t" to binary 0/1
+for (i in 1:nrow(shot)){
+  if (shot['goal'][i,]=="f"){
+    shot['goal'][i,] = 0 
+  }
+  else {
+    shot['goal'][i,] = 1 
+  }
+}
+
+#top players who have the most successful shots 
+shooter <- shot %>% group_by(shooter,goal) %>% summarise(n=n())
+shooter %>% filter(goal==1) %>% arrange(desc(n))
+
+#add new variables "shot_dist" "shot_angel"
+net <- c(200,85/2)
+for (i in 1:nrow(shot)){
+  shot$shot_dist[i] <- sqrt((net[1]-shot[i,"x"])^2+(net[2]-shot[i,"y"])^2)
+}
+
+#note: r always works wirh radians, not angel; radian=angel*pi/180
+#example:tan(45*pi/180); atan(tan(45*pi/180)) /pi*180
+for (i in 1:nrow(shot)){
+  shot$shot_angel[i] <- atan((abs(net[2]-shot[i,"y"]))/abs(net[1]-shot[i,"x"]))/pi*180
+}
+
+
+shot$goal = factor(shot$goal)
+shot$period = factor(shot$period)
+
+shot <- na.omit(shot)
+
+set.seed(100)
+split.1 <- sample.split(shot$goal, 0.7)
+shot_train <- subset(shot, split.1==TRUE)
+shot_test <- subset(shot, split.1==FALSE)
+
+obs_result1 <- shot_test$goal
+
+##1. Logistic model
+model1 <- glm(goal ~ shot_dist + shot_angel + shot_type , data=shot_train, family = binomial(link="logit"))
+summary(model1)
+prob <- predict(model1, newdata=shot_test, type="response")
+results.1 <- ifelse(prob>0.5,1,0)
+#accuracy rate:
+1-(mean(results.1!=obs_result1))  #0.9643963
+##Compute roc
+res.roc1 <- roc(obs_result1, prob)
+plot.roc(res.roc1, print.auc = TRUE) #AUC:0.782
+
+
+##2. decision tree model
+tree <- rpart(goal ~ shot_dist + shot_angel , data=shot, control=rpart.control(cp=.005))
+plot(tree, uniform=TRUE, margin=.05)
+text(tree)
+rpart.plot(tree)
+
+pred_tree <- predict(tree, newdata = shot_test)
+results.2 <- ifelse(pred_tree[,"0"]>0.5,0,1)
+#accuracy rate:
+1-(mean(results.2!=obs_result1)) #0.9659443
+##Compute roc
+res.roc2 <- roc(obs_result1, pred_tree[,2])
+plot.roc(res.roc2, print.auc = TRUE) #AUC:0.710
+
+```
+
+
+- We built 2 models: logistic regression, decision tree. Based on the AUC and accuracy rate, logistic performs better. So we will use logistic model.
+- Based on the logistic model, shot distance and shot angel are significant in determining whether the shot is successful.
+- Our next step is to use Canadian Woman data to predict the prob of successful shot based on each player's average distance and angel data.
+
+##. 'Pass' Model
+```{r}
+
+##play data (reflect the quality of passes)
+pass <- data %>% filter(event_type=='Play')
+pass <- pass[,c("game_name","period","team_name","player_name","receiver_name","situation_type","x_event","y_event","receiver_x","receiver_y","event_successful")]
+pass <- pass %>% rename(x=x_event,y=y_event, goal=event_successful)
+pass['goal'] <- data.frame(lapply(pass['goal'], as.character), stringsAsFactors=FALSE)
+
+##convert "f/t" to binary 0/1
+for (i in 1:nrow(pass)){
+  if (pass['goal'][i,]=="f"){
+    pass['goal'][i,] = 0 
+  }
+  else {
+    pass['goal'][i,] = 1 
+  }
+}
+
+
+##add new variables "shot_dist" "shot_angel"
+for (i in 1:nrow(pass)){
+  pass$distance[i] <- sqrt((pass[i,"receiver_x"]-pass[i,"x"])^2+(pass[i,"receiver_y"]-pass[i,"y"])^2)
+}
+
+###note: r always works wirh radians, not angel; radian=angel*pi/180
+###example:tan(45*pi/180); atan(tan(45*pi/180)) /pi*180
+for (i in 1:nrow(pass)){
+  pass$angel[i] <- atan((abs(pass[i,"receiver_y"]-pass[i,"y"]))/abs(pass[i,"receiver_x"]-pass[i,"x"]))/pi*180
+}
+
+pass$goal = factor(pass$goal)
+pass$period = factor(pass$period)
+
+pass <- na.omit(pass)
+
+set.seed(100)
+split.1 <- sample.split(shot$goal, 0.7)
+pass_train <- subset(pass, split.1==TRUE)
+pass_test <- subset(pass, split.1==FALSE)
+
+##1.logistic model
+
+model2 <- glm(goal ~ distance + angel+x +y+receiver_x+receiver_y  , data=pass_train, family = binomial(link="logit"))
+summary(model2)
+prob2 <- predict(model2, newdata = pass_test, type="response")
+results.3 <- ifelse(prob2>0.5,1,0)
+obs_result2 <- as.numeric(as.character(pass_test$goal))
+
+#model <- glm(goal ~., data = pass_train, family = binomial) %>%
+  stepAIC(trace = FALSE)
+
+##accuracy:
+1-(mean(results.3!=obs_result2))  #0.7340191
+##Compute roc
+res.roc3 <- roc(obs_result2, prob2)
+plot.roc(res.roc3, print.auc = TRUE) #AUC:0.629
+
+##2.decision tree model
+tree2 <- rpart(goal~distance + angel + x +y+receiver_x+receiver_y+period+team_name, data = pass_train, method = 'class')
+
+plot(tree2, uniform=TRUE, margin=.05)
+text(tree2)
+rpart.plot(tree2)
+
+pred_tree2 <- predict(tree2, newdata = pass_test)
+results.4 <- ifelse(pred_tree2[,"0"]>0.5,0,1)
+##accuracy:
+1-(mean(results.4!=pass_test$goal))  #0.7526329
+##Compute roc
+res.roc4 <- roc(obs_result2, pred_tree2[,2])
+plot.roc(res.roc4, print.auc = TRUE) #AUC: 0.566
+
+
+```
+- We built 2 models: logistic regression, decision tree. Based on the AUC and accuracy rate, logistic performs better. So we will use logistic model.
+- Based on the logistic, significant variables that determines whether the pass is successful are: distance,angel,x,receiver_x.
+- Our next step is to use Canadian Woman data to predict the prob of successful pass based on each player's significant variables.
+
+
+
+
+
+##shot
+```{r}
+#Use logistic model to select top 5 shooters in power play situation
+#Method: average all probablities of succussful shot for each player
+cw_df <- filter(shot, team_name=="Olympic (Women) - Canada")
+cw_df$prob_goal <- predict(model1, newdata = cw_df, type="response")
+shooters <- cw_df %>% group_by(shooter,situation_type) %>% summarise(prob=mean(prob_goal)) %>% arrange(desc(prob))
+shooters
+
+## method min-max normaliazation
+min_max <- function(x){(x-min(x))/(max(x)-min(x))}
+shooters$prob_norm <- min_max(shooters$prob)
+
+top_shot_names <- c("Haley Irwin","Melodie Daoust","Victoria Bach","Rebecca Leslie","Jamie Lee Rattray")
+top_shooters <- filter(cw_df, shooter %in% top_shot_names)[,c("shooter","prob_goal")] %>% arrange(shooter)
+library(ggplot2)
+p2 <- ggplot(top_shooters, aes(x=shooter, y=prob_goal, fill=shooter))  +geom_boxplot(varwidth = TRUE, alpha=0.2) +
+    theme(legend.position="none") 
+
+p2 + labs(x="shooters", y = "predicted successful rate")
+
+```
+
+##pass
+```{r}
+#Use logistic model to select top 5 possers
+#Method: average all probablities of succussful pass for each player
+cw_df2 <- filter(pass, team_name=="Olympic (Women) - Canada")
+cw_df2$prob_goal <- predict(model2, newdata = cw_df2, type="response")
+passers <- cw_df2 %>% group_by(player_name,situation_type) %>% summarise(prob=mean(prob_goal)) %>% arrange(desc(prob))
+passers
+
+## method min-max normaliazation
+min_max <- function(x){(x-min(x))/(max(x)-min(x))}
+passers$prob_norm <- min_max(passers$prob)
+
+top_pass_names <- c("Shannon Szabados","Haley Irwin","Genevieve Lacasse","Ann-Renee Desbiens","Loren Gabel")
+top_passers <- filter(cw_df2, player_name %in% top_pass_names)[,c("player_name","prob_goal")] %>% arrange(player_name)
+
+p1 <- ggplot(top_passers, aes(x=player_name, y=prob_goal, fill=player_name))   +geom_boxplot(varwidth = TRUE, alpha=0.2) +
+    theme(legend.position="none")
+p1+labs(x="passers", y = "predicted successful rate")
+
+top_pass_names <- c("Shannon Szabados","Haley Irwin","Genevieve Lacasse","Ann-Renee Desbiens","Loren Gabel")
+top_passers <- filter(cw_df2, player_name %in% top_pass_names)[,c("player_name","prob_goal")] %>% arrange(player_name)
+
+p1 <- ggplot(top_passers, aes(x=player_name, y=prob_goal, fill=player_name))   +geom_boxplot(varwidth = TRUE, alpha=0.2) +
+    theme(legend.position="none")
+p1+labs(x="passers", y = "predicted successful rate")
+
+```
+
+
+#4.1 Top Power Play Specialiests
+
+##top PP specialiests 
+```{r}
+## shooters under power play
+shot_pp <- filter(shooters, situation_type == "5 on 4" | situation_type == "6 on 5" |
+                    situation_type == "5 on 3" | situation_type == "6 on 4" |
+                    situation_type == "4 on 3")  %>% group_by(shooter) %>% summarise(prob_shot=mean(prob), prob_shot_norm=mean(prob_norm)) %>% arrange(desc(prob_shot_norm))
+shot_pp$player_name = shot_pp$shooter
+
+
+sum_shots <- filter(cw_df, situation_type == "5 on 4" | situation_type == "6 on 5" |
+                    situation_type == "5 on 3" | situation_type == "6 on 4" |
+                    situation_type == "4 on 3") %>% group_by(shooter) %>% 
+  summarise(total_shots=n())
+filter1 <- median(sum_shots$total_shots)
+
+
+shot_candidate <- select(filter(sum_shots, total_shots >= filter1), shooter)
+colnames(shot_candidate)[1] <- "player_name"
+shot_candidate$prob_shot_norm <- "NA"
+
+
+new_shotpp <- select(inner_join(select(shot_pp, player_name, prob_shot_norm), shot_candidate,
+                         by = "player_name"), -prob_shot_norm.y)
+colnames(new_shotpp)[2] <- "prob_shot_norm"
+
+
+
+
+
+## passers under power play
+pass_pp <- filter(passers, situation_type == "5 on 4" | situation_type == "6 on 5" |
+                    situation_type == "5 on 3" | situation_type == "6 on 4" |
+                    situation_type == "4 on 3")  %>% group_by(player_name) %>% summarise(prob_pass=mean(prob), prob_pass_norm=mean(prob_norm)) %>% arrange(desc(prob_pass_norm))
+
+
+
+sum_passes <- filter(cw_df2, situation_type == "5 on 4" | situation_type == "6 on 5" |
+                    situation_type == "5 on 3" | situation_type == "6 on 4" |
+                    situation_type == "4 on 3") %>% group_by(player_name) %>% 
+  summarise(total_passes=n())
+filter2 <- median(sum_passes$total_passes)
+
+
+pass_candidate <- select(filter(sum_passes, total_passes >= filter2), player_name)
+pass_candidate$prob_pass_norm <- "NA"
+
+
+new_passpp <- select(inner_join(select(pass_pp, player_name, prob_pass_norm), pass_candidate,
+                         by = "player_name"), -prob_pass_norm.y)
+colnames(new_passpp)[2] <- "prob_pass_norm"
+
+
+
+
+
+#final ranks
+PP <- merge(new_shotpp, new_passpp, by = c('player_name'))
+PP_rank <- PP %>% group_by(player_name) %>% mutate(results = prob_shot_norm*weigh_shot+prob_pass_norm*weigh_pass) %>% arrange(desc(results))
+
+PP_rank[1:5, "player_name"]
+```
+
+#4.2 Top Penalty kill Specialiests
+
+##takeaway in PK
+```{r}
+game <- select(filter(canada_woman,event_type=="Takeaway"), player_name, game_name) %>% group_by(player_name,player_name) %>% distinct(game_name) 
+
+sum_game <- game %>% count(player_name, sort = TRUE)
+sum_game
+
+sum_take <- canada_woman %>% filter(event_type=="Takeaway", event_successful=="t") %>% group_by(player_name, situation_type) %>% summarise(n=n()) %>% arrange(desc(player_name)) 
+
+takeaway <- inner_join(sum_take, sum_game, by = "player_name")
+takeaway$take_per_game <- takeaway$n.x / takeaway$n.y
+colnames(takeaway)[3] <- "sum_of_take"
+colnames(takeaway)[4] <- "sum_of_game"
+takeaway <- select(takeaway, -sum_of_take, -sum_of_game)
+
+
+## method min-max normaliazation
+min_max <- function(x){(x-min(x))/(max(x)-min(x))}
+takeaway$take_per_game_norm <- min_max(takeaway$take_per_game)
+takeaway <- takeaway  %>% arrange(desc(take_per_game))
+takeaway
+```
+
+
+##top PK Specialiests
+```{r}
+#takeaway in PK
+take_pk <- filter(takeaway, situation_type == "4 on 5" | situation_type == "5 on 6") %>% group_by(player_name) %>% summarise(take_per_game=mean(take_per_game), take_per_game_norm=mean(take_per_game_norm)) %>% arrange(desc(take_per_game), desc(take_per_game_norm))
+
+
+
+
+#pass in PK
+pass_pk <- filter(passers, situation_type == "4 on 5" | situation_type == "5 on 6") %>%  group_by(player_name) %>% summarise( prob=mean(prob), prob_norm=mean(prob_norm)) %>% arrange(desc(prob), desc(prob_norm))
+
+
+
+sum_passes2 <- filter(cw_df2, situation_type == "4 on 5" | situation_type == "5 on 6") %>% 
+  group_by(player_name) %>% summarise(total_passes=n())
+
+filter3 <- median(sum_passes2$total_passes)
+
+
+pass_candidate2 <- select(filter(sum_passes2, total_passes >= filter3), player_name)
+pass_candidate2$prob_norm <- "NA"
+
+
+new_passpk <- select(inner_join(select(pass_pk, player_name, prob_norm), pass_candidate2,
+                         by = "player_name"), -prob_norm.y)
+colnames(new_passpk)[2] <- "prob_norm"
+
+
+#final ranks
+PK <- merge(take_pk, new_passpk, by = c('player_name'))
+PK_rank <- PK %>% group_by(player_name) %>% mutate(results = take_per_game_norm*weigh_takeaway+prob_norm*weigh_pass) %>% arrange(desc(results))
+
+PK_rank[1:4, "player_name"]
+```
+
+
+
+
+
+#1. 5 Power Play Specialists
+##shots in power play situation ranking
+##passes in power play situation ranking
+##apply weights
+##final ranking
+
+
+
+#2. 4 Penalty Kill Specialists
+##shots in penalty kill situation ranking
+##passes in penalty kill situation ranking
+##apply weights
+##final ranking
+
+#based on long's plot, for the final selected players, we can give them suggustions of which areas they should improve
+
+
+
+
+
